@@ -7,6 +7,7 @@ package schema
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -48,9 +49,9 @@ func (c *cache) parsePath(p string, t reflect.Type) ([]pathPart, error) {
 	var field *fieldInfo
 	var index64 int64
 	var err error
-	parts := make([]pathPart, 0)
-	path := make([]string, 0)
 	keys := strings.Split(p, ".")
+	parts := make([]pathPart, 0, len(keys))
+	path := make([]string, 0, len(keys))
 	for i := 0; i < len(keys); i++ {
 		if t.Kind() != reflect.Struct {
 			return nil, errInvalidPath
@@ -78,11 +79,11 @@ func (c *cache) parsePath(p string, t reflect.Type) ([]pathPart, error) {
 				return nil, errInvalidPath
 			}
 			parts = append(parts, pathPart{
-				path:  path,
+				path:  slices.Clip(path),
 				field: field,
 				index: int(index64),
 			})
-			path = make([]string, 0)
+			path = path[len(path):]
 
 			// Get the next struct type, dropping ptrs.
 			if field.typ.Kind() == reflect.Ptr {
@@ -104,10 +105,11 @@ func (c *cache) parsePath(p string, t reflect.Type) ([]pathPart, error) {
 	}
 	// Add the remaining.
 	parts = append(parts, pathPart{
-		path:  path,
+		path:  slices.Clip(path),
 		field: field,
 		index: -1,
 	})
+	parts = slices.Clip(parts)
 	return parts, nil
 }
 
