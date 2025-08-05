@@ -38,6 +38,27 @@ func (c *cache) registerConverter(value interface{}, converterFunc Converter) {
 	c.regconv[reflect.TypeOf(value)] = converterFunc
 }
 
+type pathIter struct {
+	rest string
+}
+
+func (p *pathIter) start(path string) (string, bool) {
+	return p.next(path)
+}
+
+func (p *pathIter) advance() (string, bool) {
+	return p.next(p.rest)
+}
+
+func (p *pathIter) next(path string) (key string, found bool) {
+	key, p.rest, found = strings.Cut(path, ".")
+	// special case for paths without ".". this can be the beginning or end of a path.
+	if !found && key != "" {
+		return key, true
+	}
+	return key, found
+}
+
 // parsePath parses a path in dotted notation verifying that it is a valid
 // path to a struct field.
 //
@@ -49,33 +70,40 @@ func (c *cache) parsePath(p string, t reflect.Type) ([]pathPart, error) {
 	var field *fieldInfo
 	var index64 int64
 	var err error
-	keys := strings.Split(p, ".")
-	parts := make([]pathPart, 0, len(keys))
-	path := make([]string, 0, len(keys))
-	for i := 0; i < len(keys); i++ {
+	// pre-allocate parts and path using the number of ".".
+	// path will be appended to every valid element of the path, but parts will
+	// only be appended to for each slice of struct.
+	n := strings.Count(p, ".")
+	if n == 0 {
+		n = 1
+	}
+	parts := make([]pathPart, 0, n)
+	path := make([]string, 0, n)
+	var it pathIter
+	for key, found := it.start(p); found; key, found = it.advance() {
 		if t.Kind() != reflect.Struct {
 			return nil, errInvalidPath
 		}
 		if struc = c.get(t); struc == nil {
 			return nil, errInvalidPath
 		}
-		if field = struc.get(keys[i]); field == nil {
+		if field = struc.get(key); field == nil {
 			return nil, errInvalidPath
 		}
 		// Valid field. Append index.
 		path = append(path, field.name)
 		if field.isSliceOfStructs && (!field.unmarshalerInfo.IsValid || (field.unmarshalerInfo.IsValid && field.unmarshalerInfo.IsSliceElement)) {
 			// Parse a special case: slices of structs.
-			// i+1 must be the slice index.
+			// next key must be the slice index.
 			//
 			// Now that struct can implements TextUnmarshaler interface,
 			// we don't need to force the struct's fields to appear in the path.
 			// So checking i+2 is not necessary anymore.
-			i++
-			if i+1 > len(keys) {
+			key, found = it.advance()
+			if !found {
 				return nil, errInvalidPath
 			}
-			if index64, err = strconv.ParseInt(keys[i], 10, 0); err != nil {
+			if index64, err = strconv.ParseInt(key, 10, 0); err != nil {
 				return nil, errInvalidPath
 			}
 			parts = append(parts, pathPart{
