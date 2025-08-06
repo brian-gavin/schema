@@ -2527,3 +2527,42 @@ func TestDecoder_SetMaxSize(t *testing.T) {
 		}
 	})
 }
+
+type keyvalue struct {
+	Key   string
+	Value string
+}
+
+type sliceOfStructInput struct {
+	Attributes []keyvalue
+	Tags       []keyvalue
+}
+
+func BenchmarkSliceOfStruct(b *testing.B) {
+	d := NewDecoder()
+	v := map[string][]string{
+		"Attributes.0.Key":   {"foo0"},
+		"Attributes.0.Value": {"bar0"},
+		"Attributes.1.Key":   {"foo1"},
+		"Attributes.1.Value": {"bar1"},
+		"Attributes.2.Key":   {"foo2"},
+		"Attributes.2.Value": {"bar2"},
+		"Attributes.3.Key":   {"foo3"},
+		"Attributes.3.Value": {"bar3"},
+		"Attributes.4.Key":   {"foo4"},
+		"Attributes.4.Value": {"bar4"},
+		"Attributes.5.Key":   {"foo5"},
+		"Attributes.5.Value": {"bar5"},
+		"Tags.0.Key":         {"baz0"},
+		"Tags.0.Value":       {"bam0"},
+		"Tags.1.Key":         {"baz1"},
+		"Tags.1.Value":       {"bam1"},
+		"Tags.2.Key":         {"baz2"},
+		"Tags.2.Value":       {"bam2"},
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in := &sliceOfStructInput{}
+		_ = d.Decode(in, v)
+	}
+}
