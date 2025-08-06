@@ -7,7 +7,6 @@ package schema
 import (
 	"errors"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,25 +37,35 @@ func (c *cache) registerConverter(value interface{}, converterFunc Converter) {
 	c.regconv[reflect.TypeOf(value)] = converterFunc
 }
 
+// pathIter is used to iterate over the dotted notation argument to (*cache).parsePath.
+// internally it utilizes strings.Cut to minimize allocations and garbage generated.
+//
+// this should be used with a for loop as:
+//
+//	var it pathIter
+//	for key, ok := it.start(path); ok; key, ok = it.advance() {}
 type pathIter struct {
 	rest string
 }
 
+// start initializes the iteration, and returns the first key.
 func (p *pathIter) start(path string) (string, bool) {
 	return p.next(path)
 }
 
+// advance advances the iteration to the next key.
 func (p *pathIter) advance() (string, bool) {
 	return p.next(p.rest)
 }
 
-func (p *pathIter) next(path string) (key string, found bool) {
-	key, p.rest, found = strings.Cut(path, ".")
-	// special case for paths without ".". this can be the beginning or end of a path.
-	if !found && key != "" {
-		return key, true
-	}
-	return key, found
+// next should only be used by (*pathIter).start and (*pathIter).advance. it will cut path,
+// and return the "before", storing the "after" for the subsequent call.
+// if path does not contain "." and is non-empty, it will return (path, true), storing "".
+// if path is empty, it will return ("", false). this means the end of iteration.
+func (p *pathIter) next(path string) (key string, ok bool) {
+	key, p.rest, _ = strings.Cut(path, ".")
+	ok = key != ""
+	return key, ok
 }
 
 // parsePath parses a path in dotted notation verifying that it is a valid
@@ -74,13 +83,13 @@ func (c *cache) parsePath(p string, t reflect.Type) ([]pathPart, error) {
 	// path will be appended to every valid element of the path, but parts will
 	// only be appended to for each slice of struct.
 	n := strings.Count(p, ".")
-	if n == 0 {
+	if n == 0 { // note: go1.21 max()
 		n = 1
 	}
 	parts := make([]pathPart, 0, n)
 	path := make([]string, 0, n)
 	var it pathIter
-	for key, found := it.start(p); found; key, found = it.advance() {
+	for key, ok := it.start(p); ok; key, ok = it.advance() {
 		if t.Kind() != reflect.Struct {
 			return nil, errInvalidPath
 		}
@@ -99,15 +108,15 @@ func (c *cache) parsePath(p string, t reflect.Type) ([]pathPart, error) {
 			// Now that struct can implements TextUnmarshaler interface,
 			// we don't need to force the struct's fields to appear in the path.
 			// So checking i+2 is not necessary anymore.
-			key, found = it.advance()
-			if !found {
+			key, ok = it.advance()
+			if !ok {
 				return nil, errInvalidPath
 			}
 			if index64, err = strconv.ParseInt(key, 10, 0); err != nil {
 				return nil, errInvalidPath
 			}
 			parts = append(parts, pathPart{
-				path:  slices.Clip(path),
+				path:  path[:len(path):len(path)], // note: go1.21 slices.Clip()
 				field: field,
 				index: int(index64),
 			})
@@ -133,11 +142,11 @@ func (c *cache) parsePath(p string, t reflect.Type) ([]pathPart, error) {
 	}
 	// Add the remaining.
 	parts = append(parts, pathPart{
-		path:  slices.Clip(path),
+		path:  path[:len(path):len(path)], // note: go1.21 slices.Clip()
 		field: field,
 		index: -1,
 	})
-	parts = slices.Clip(parts)
+	parts = parts[:len(parts):len(parts)] // note: go1.21 slices.Clip()
 	return parts, nil
 }
 
