@@ -2566,3 +2566,29 @@ func BenchmarkSliceOfStruct(b *testing.B) {
 		_ = d.Decode(in, v)
 	}
 }
+
+func TestPathIter(t *testing.T) {
+	testcases := []string{
+		"a",
+		"a.b",
+		".b.",
+		".",
+		"..",
+		"",
+	}
+	for _, tc := range testcases {
+		t.Run(tc, func(t *testing.T) {
+			var (
+				it      pathIter
+				split   = strings.Split(tc, ".")
+				collect = make([]string, 0, len(split))
+			)
+			for k, ok := it.start(tc); ok; k, ok = it.advance() {
+				collect = append(collect, k)
+			}
+			if !reflect.DeepEqual(split, collect) {
+				t.Fatalf("expected: %q | got: %q", split, collect)
+			}
+		})
+	}
+}

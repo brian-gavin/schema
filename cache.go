@@ -45,26 +45,32 @@ func (c *cache) registerConverter(value interface{}, converterFunc Converter) {
 //	var it pathIter
 //	for key, ok := it.start(path); ok; key, ok = it.advance() {}
 type pathIter struct {
-	rest string
+	rest      string
+	lastFound bool
 }
 
 // start initializes the iteration, and returns the first key.
 func (p *pathIter) start(path string) (string, bool) {
-	return p.next(path)
+	// init the iter for the first call to next, so that the first call will either
+	// cut on "." and return the "before", or it will return path if it does not contain
+	// ".".
+	p.rest = path
+	p.lastFound = true
+	return p.next()
 }
 
 // advance advances the iteration to the next key.
 func (p *pathIter) advance() (string, bool) {
-	return p.next(p.rest)
+	return p.next()
 }
 
-// next should only be used by (*pathIter).start and (*pathIter).advance. it will cut path,
+// next should only be used by (*pathIter).start and (*pathIter).advance. it will cut p.rest,
 // and return the "before", storing the "after" for the subsequent call.
-// if path does not contain "." and is non-empty, it will return (path, true), storing "".
-// if path is empty, it will return ("", false). this means the end of iteration.
-func (p *pathIter) next(path string) (key string, ok bool) {
-	key, p.rest, _ = strings.Cut(path, ".")
-	ok = key != ""
+func (p *pathIter) next() (key string, ok bool) {
+	var found bool
+	key, p.rest, found = strings.Cut(p.rest, ".")
+	ok = found || p.lastFound
+	p.lastFound = found
 	return key, ok
 }
 
